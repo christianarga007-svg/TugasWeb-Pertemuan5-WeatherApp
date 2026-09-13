@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Weather App - Tugas 5</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-900 min-h-screen flex items-center justify-center p-4 text-slate-800 font-sans">
+
+    <main class="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden">
+        <div class="bg-indigo-600 p-6 text-center text-white">
+            <h1 class="text-2xl font-bold">Cuaca Terkini</h1>
+            <p class="text-indigo-200 text-sm mt-1">Cari kondisi cuaca di seluruh dunia</p>
+        </div>
+
+        <div class="p-6">
+            <form id="search-form" class="flex gap-2 mb-6">
+                <input 
+                    type="text" 
+                    id="city-input" 
+                    placeholder="Masukkan nama kota..." 
+                    class="flex-1 bg-slate-100 border border-slate-300 rounded-lg px-4 py-2 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                    autocomplete="off"
+                >
+                <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-lg font-semibold transition">
+                    Cari
+                </button>
+            </form>
+
+            <div id="loading" class="hidden text-center py-8">
+                <div class="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600 mx-auto mb-3"></div>
+                <p class="text-slate-500 font-medium">Mencari data cuaca...</p>
+            </div>
+
+            <div id="error-msg" class="hidden bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg mb-6 text-center font-medium">
+            </div>
+
+            <div id="weather-info" class="hidden flex flex-col items-center py-4">
+                <h2 id="city-name" class="text-3xl font-extrabold text-slate-800 tracking-tight"></h2>
+                <div class="flex items-center justify-center my-4">
+                    <img id="weather-icon" src="" alt="Ikon cuaca" class="w-24 h-24 drop-shadow-md">
+                    <span id="temperature" class="text-6xl font-black text-slate-800"></span>
+                </div>
+                <p id="description" class="text-xl text-slate-600 capitalize font-medium mb-1"></p>
+                <p id="humidity" class="text-slate-500 font-medium flex items-center gap-1"></p>
+            </div>
+
+            <div id="history-container" class="mt-8 border-t border-slate-200 pt-6 hidden">
+                <h3 class="text-sm font-semibold text-slate-500 mb-3 uppercase tracking-wider">Riwayat Pencarian</h3>
+                <div id="history-list" class="flex flex-wrap gap-2"></div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        const API_KEY = '2673ca14e6040eec0a1e006b354864ed'; 
+        const BASE_URL = 'https://api.openweathermap.org/data/2.5/weather';
+
+        const form = document.getElementById('search-form');
+        const input = document.getElementById('city-input');
+        const weatherInfo = document.getElementById('weather-info');
+        const loading = document.getElementById('loading');
+        const errorMsg = document.getElementById('error-msg');
+        const historyContainer = document.getElementById('history-container');
+        const historyList = document.getElementById('history-list');
+
+        let searchHistory = JSON.parse(localStorage.getItem('weatherHistory')) || [];
+
+        const renderHistory = () => {
+            if (searchHistory.length === 0) {
+                historyContainer.classList.add('hidden');
+                return;
+            }
+            historyContainer.classList.remove('hidden');
+
+            const historyHTML = searchHistory.map(city => 
+                `<button onclick="fetchWeatherData('${city}')" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm px-3 py-1 rounded-full transition border border-slate-300">
+                    ${city}
+                </button>`
+            ).join('');
+            
+            historyList.innerHTML = historyHTML;
+        };
+
+        const updateHistory = (city) => {
+            if (!searchHistory.includes(city)) {
+                searchHistory.unshift(city);
+                if (searchHistory.length > 5) searchHistory.pop();
+                localStorage.setItem('weatherHistory', JSON.stringify(searchHistory));
+                renderHistory();
+            }
+        };
+
+        const fetchWeatherData = async (cityName) => {
+            loading.classList.remove('hidden');
+            weatherInfo.classList.add('hidden');
+            errorMsg.classList.add('hidden');
+
+            try {
+                const response = await fetch(`${BASE_URL}?q=${cityName}&appid=${API_KEY}&units=metric&lang=id`);
+                
+                if (response.status === 404) {
+                    throw new Error(`Kota "${cityName}" tidak ditemukan.`);
+                }
+                
+                if (!response.ok) {
+                    throw new Error('Terjadi kesalahan pada server API.');
+                }
+
+                const data = await response.json();
+                displayWeather(data);
+                updateHistory(data.name);
+
+            } catch (error) {
+                if (error.message === 'Failed to fetch') {
+                    errorMsg.textContent = 'Koneksi terputus. Periksa jaringan internet Anda.';
+                } else {
+                    errorMsg.textContent = error.message;
+                }
+                errorMsg.classList.remove('hidden');
+                
+            } finally {
+                loading.classList.add('hidden');
+            }
+        };
+
+        const displayWeather = (data) => {
+            const { name, main: { temp, humidity }, weather } = data;
+            const { description, icon } = weather[0];
+
+            document.getElementById('city-name').textContent = name;
+            document.getElementById('temperature').textContent = `${Math.round(temp)}°C`;
+            document.getElementById('description').textContent = description;
+            document.getElementById('humidity').textContent = `💧 Kelembaban: ${humidity}%`;
+            
+            const iconUrl = `https://openweathermap.org/img/wn/${icon}@4x.png`;
+            document.getElementById('weather-icon').src = iconUrl;
+            document.getElementById('weather-icon').alt = description;
+
+            weatherInfo.classList.remove('hidden');
+        };
+
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const city = input.value.trim();
+            if (city) {
+                fetchWeatherData(city);
+                input.value = '';
+            }
+        });
+
+        renderHistory();
+    </script>
+</body>
+</html>
